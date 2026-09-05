@@ -26,22 +26,51 @@ func main() {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	res, err := provider.Execute(ctx, &models.Request{
+	stream, err := provider.StreamExecute(ctx, &models.Request{
 		Messages: []models.Message{
-			{Role: "user", Content: "Say hello in one short sentence."},
+			// {Role: "user", Content: "Say hello in one short sentence."},
+			{Role: "user", Content: "can you recomened a 5 day trip to japan."},
 		},
 	})
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			fmt.Println("cancelled")
-			return
-		}
-		if errors.Is(err, context.DeadlineExceeded) {
-			fmt.Println("timed out")
-			return
-		}
-		log.Fatal(err)
+		fatalInferenceErr(err)
+		return
 	}
 
-	fmt.Println(res.Content)
+	printedReasoning := false
+
+	for chunk := range stream.Chunks() {
+		if chunk.ReasoningDelta != "" {
+			if !printedReasoning {
+				fmt.Println("reasoning:")
+				printedReasoning = true
+			}
+			fmt.Print(chunk.ReasoningDelta)
+		}
+		if chunk.ContentDelta != "" {
+			if printedReasoning {
+				fmt.Println()
+				fmt.Println("content:")
+				printedReasoning = false
+			}
+			fmt.Print(chunk.ContentDelta)
+		}
+	}
+	fmt.Println()
+
+	if err := stream.Err(); err != nil {
+		fatalInferenceErr(err)
+	}
+}
+
+func fatalInferenceErr(err error) {
+	if errors.Is(err, context.Canceled) {
+		fmt.Println("cancelled")
+		return
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		fmt.Println("timed out")
+		return
+	}
+	log.Fatal(err)
 }
