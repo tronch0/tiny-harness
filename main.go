@@ -26,7 +26,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	stream, err := provider.StreamExecute(ctx, &models.Request{
+	stream, err := provider.Stream(ctx, &models.Input{
 		Messages: []models.Message{
 			// {Role: "user", Content: "Say hello in one short sentence."},
 			{Role: "user", Content: "can you recomened a 5 day trip to japan."},
@@ -39,21 +39,21 @@ func main() {
 
 	printedReasoning := false
 
-	for chunk := range stream.Chunks() {
-		if chunk.ReasoningDelta != "" {
+	for delta := range stream.Deltas() {
+		if delta.ReasoningDelta != "" {
 			if !printedReasoning {
 				fmt.Println("reasoning:")
 				printedReasoning = true
 			}
-			fmt.Print(chunk.ReasoningDelta)
+			fmt.Print(delta.ReasoningDelta)
 		}
-		if chunk.ContentDelta != "" {
+		if delta.ContentDelta != "" {
 			if printedReasoning {
 				fmt.Println()
 				fmt.Println("content:")
 				printedReasoning = false
 			}
-			fmt.Print(chunk.ContentDelta)
+			fmt.Print(delta.ContentDelta)
 		}
 	}
 	fmt.Println()

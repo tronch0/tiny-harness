@@ -2,10 +2,10 @@ package models
 
 import "context"
 
-// InferenceProvider is an interface that defines the methods for an external AI provider.
-type InferenceProvider interface {
-	Execute(ctx context.Context, req *Request) (*Response, error)
-	StreamExecute(ctx context.Context, req *Request) (*Stream, error)
+// Provider is an interface that defines the methods for an external AI provider.
+type Provider interface {
+	Complete(ctx context.Context, in *Input) (*Output, error)
+	Stream(ctx context.Context, in *Input) (*Stream, error)
 }
 
 // Message is a struct that represents a message.
@@ -14,11 +14,11 @@ type Message struct {
 	Content string `json:"content"`
 }
 
-type Request struct {
+type Input struct {
 	Messages []Message `json:"messages"`
 }
 
-type Response struct {
+type Output struct {
 	Content   string `json:"content"`
 	Reasoning string `json:"reasoning,omitempty"`
 }

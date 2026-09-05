@@ -5,40 +5,40 @@ import (
 	"testing"
 )
 
-func TestCollectStream(t *testing.T) {
+func TestCollect(t *testing.T) {
 	stream := NewStream()
 
 	go func() {
-		stream.Send(StreamChunk{ReasoningDelta: "think "})
-		stream.Send(StreamChunk{ContentDelta: "Hello"})
-		stream.Send(StreamChunk{ContentDelta: "!"})
+		stream.Send(Delta{ReasoningDelta: "think "})
+		stream.Send(Delta{ContentDelta: "Hello"})
+		stream.Send(Delta{ContentDelta: "!"})
 		stream.Finish(nil)
 	}()
 
-	res, err := CollectStream(stream)
+	out, err := Collect(stream)
 	if err != nil {
-		t.Fatalf("CollectStream() error = %v", err)
+		t.Fatalf("Collect() error = %v", err)
 	}
-	if res.Reasoning != "think " {
-		t.Fatalf("Reasoning = %q, want %q", res.Reasoning, "think ")
+	if out.Reasoning != "think " {
+		t.Fatalf("Reasoning = %q, want %q", out.Reasoning, "think ")
 	}
-	if res.Content != "Hello!" {
-		t.Fatalf("Content = %q, want %q", res.Content, "Hello!")
+	if out.Content != "Hello!" {
+		t.Fatalf("Content = %q, want %q", out.Content, "Hello!")
 	}
 }
 
-func TestCollectStream_error(t *testing.T) {
+func TestCollect_error(t *testing.T) {
 	stream := NewStream()
 	wantErr := errors.New("stream failed")
 
 	go func() {
-		stream.Send(StreamChunk{ContentDelta: "partial"})
+		stream.Send(Delta{ContentDelta: "partial"})
 		stream.Finish(wantErr)
 	}()
 
-	_, err := CollectStream(stream)
+	_, err := Collect(stream)
 	if !errors.Is(err, wantErr) {
-		t.Fatalf("CollectStream() error = %v, want %v", err, wantErr)
+		t.Fatalf("Collect() error = %v, want %v", err, wantErr)
 	}
 }
 
@@ -50,7 +50,7 @@ func TestStream_ErrAfterFinish(t *testing.T) {
 		stream.Finish(wantErr)
 	}()
 
-	for range stream.Chunks() {
+	for range stream.Deltas() {
 	}
 
 	if !errors.Is(stream.Err(), wantErr) {
