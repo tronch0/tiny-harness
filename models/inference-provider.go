@@ -5,6 +5,7 @@ import "context"
 // InferenceProvider is an interface that defines the methods for an external AI provider.
 type InferenceProvider interface {
 	Execute(ctx context.Context, req *Request) (*Response, error)
+	StreamExecute(ctx context.Context, req *Request) (*Stream, error)
 }
 
 // Message is a struct that represents a message.
@@ -18,5 +19,6 @@ type Request struct {
 }
 
 type Response struct {
-	Content string `json:"content"`
+	Content   string `json:"content"`
+	Reasoning string `json:"reasoning,omitempty"`
 }

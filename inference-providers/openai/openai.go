@@ -1,10 +1,12 @@
 package openai
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"tiny-harness/models"
@@ -29,11 +31,24 @@ func NewOpenAIProvider(address, model string) *OpenAIProvider {
 type chatRequest struct {
 	Model    string           `json:"model"`
 	Messages []models.Message `json:"messages"`
+	Stream   bool             `json:"stream,omitempty"`
 }
 
 type chatResponse struct {
 	Choices []struct {
-		Message models.Message `json:"message"`
+		Message struct {
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
+		} `json:"message"`
+	} `json:"choices"`
+}
+
+type chatStreamChunk struct {
+	Choices []struct {
+		Delta struct {
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
+		} `json:"delta"`
 	} `json:"choices"`
 }
 
@@ -42,9 +57,40 @@ var _ models.InferenceProvider = (*OpenAIProvider)(nil)
 
 // Execute sends the request to the chat completions API and returns the assistant response.
 func (p *OpenAIProvider) Execute(ctx context.Context, req *models.Request) (*models.Response, error) {
+	res, err := p.doChatRequest(ctx, req, false)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	return extractResponse(res)
+}
+
+// StreamExecute streams tokens from the chat completions API.
+func (p *OpenAIProvider) StreamExecute(ctx context.Context, req *models.Request) (*models.Stream, error) {
+	res, err := p.doChatRequest(ctx, req, true)
+	if err != nil {
+		return nil, err
+	}
+	if res.StatusCode != http.StatusOK {
+		res.Body.Close()
+		return nil, fmt.Errorf("unexpected status %d", res.StatusCode)
+	}
+
+	stream := models.NewStream()
+	go func() {
+		defer res.Body.Close()
+		stream.Finish(readSSE(ctx, res.Body, stream))
+	}()
+
+	return stream, nil
+}
+
+func (p *OpenAIProvider) doChatRequest(ctx context.Context, req *models.Request, stream bool) (*http.Response, error) {
 	reqBody := chatRequest{
 		Model:    p.model,
 		Messages: req.Messages,
+		Stream:   stream,
 	}
 
 	data, err := json.Marshal(reqBody)
@@ -63,9 +109,8 @@ func (p *OpenAIProvider) Execute(ctx context.Context, req *models.Request) (*mod
 	if err != nil {
 		return nil, fmt.Errorf("do request: %w", err)
 	}
-	defer res.Body.Close()
 
-	return extractResponse(res)
+	return res, nil
 }
 
 func extractResponse(res *http.Response) (*models.Response, error) {
@@ -81,5 +126,49 @@ func extractResponse(res *http.Response) (*models.Response, error) {
 		return nil, fmt.Errorf("no choices in response")
 	}
 
-	return &models.Response{Content: parsed.Choices[0].Message.Content}, nil
+	return &models.Response{
+		Content:   parsed.Choices[0].Message.Content,
+		Reasoning: parsed.Choices[0].Message.ReasoningContent,
+	}, nil
+}
+
+func readSSE(ctx context.Context, body io.Reader, stream *models.Stream) error {
+	scanner := bufio.NewScanner(body)
+	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "[DONE]" {
+			return nil
+		}
+
+		var chunk chatStreamChunk
+		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
+			return fmt.Errorf("decode stream chunk: %w", err)
+		}
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+
+		delta := chunk.Choices[0].Delta
+		if delta.Content == "" && delta.ReasoningContent == "" {
+			continue
+		}
+
+		stream.Send(models.StreamChunk{
+			ReasoningDelta: delta.ReasoningContent,
+			ContentDelta:   delta.Content,
+		})
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("read stream: %w", err)
+	}
+	return nil
 }
