@@ -1,0 +1,37 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Go: Run",
+      "type": "shell",
+      "command": "go run .",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": "$go"
+    },
+    {
+      "label": "Go: Test All",
+      "type": "shell",
+      "command": "go test ./...",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": "$go"
+    },
+    {
+      "label": "Go: Test Current Package",
+      "type": "shell",
+      "command": "go test .",
+      "options": {
+        "cwd": "${fileDirname}"
+      },
+      "group": "test",
+      "problemMatcher": "$go"
+    }
+  ]
+}

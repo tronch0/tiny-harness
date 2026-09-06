@@ -1,4 +1,4 @@
-package models
+package ai
 
 import "strings"
 
@@ -31,7 +31,7 @@ func (s *Stream) Err() error {
 	return s.err
 }
 
-// Send emits one delta. For use by inference providers only.
+// Send emits one delta. For use by providers only.
 func (s *Stream) Send(delta Delta) {
 	s.deltas <- delta
 }

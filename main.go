@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"tiny-harness/inference-providers/openai"
-	"tiny-harness/models"
+	"tiny-harness/ai"
+	"tiny-harness/ai/providers/openai"
 )
 
 func main() {
@@ -26,8 +26,8 @@ func main() {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	stream, err := provider.Stream(ctx, &models.Input{
-		Messages: []models.Message{
+	stream, err := provider.Stream(ctx, &ai.Input{
+		Messages: []ai.Message{
 			// {Role: "user", Content: "Say hello in one short sentence."},
 			{Role: "user", Content: "can you recomened a 5 day trip to japan."},
 		},

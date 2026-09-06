@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"tiny-harness/models"
+	"tiny-harness/ai"
 )
 
 const (
@@ -23,8 +23,8 @@ func TestComplete_happyPath(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	out, err := provider.Complete(ctx, &models.Input{
-		Messages: []models.Message{
+	out, err := provider.Complete(ctx, &ai.Input{
+		Messages: []ai.Message{
 			{Role: "user", Content: "Say hello in one short sentence."},
 		},
 	})
@@ -46,8 +46,8 @@ func TestComplete_timeout(t *testing.T) {
 
 	time.Sleep(1 * time.Millisecond)
 
-	_, err := provider.Complete(ctx, &models.Input{
-		Messages: []models.Message{
+	_, err := provider.Complete(ctx, &ai.Input{
+		Messages: []ai.Message{
 			{Role: "user", Content: "Write a very long essay about the history of computing."},
 		},
 	})
@@ -70,14 +70,14 @@ func TestStream_parsesSSE(t *testing.T) {
 	defer srv.Close()
 
 	provider := NewOpenAIProvider(srv.URL, "test-model")
-	stream, err := provider.Stream(context.Background(), &models.Input{
-		Messages: []models.Message{{Role: "user", Content: "hi"}},
+	stream, err := provider.Stream(context.Background(), &ai.Input{
+		Messages: []ai.Message{{Role: "user", Content: "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("Stream() error = %v", err)
 	}
 
-	out, err := models.Collect(stream)
+	out, err := ai.Collect(stream)
 	if err != nil {
 		t.Fatalf("Collect() error = %v", err)
 	}
@@ -96,8 +96,8 @@ func TestStream_unexpectedStatus(t *testing.T) {
 	defer srv.Close()
 
 	provider := NewOpenAIProvider(srv.URL, "test-model")
-	_, err := provider.Stream(context.Background(), &models.Input{
-		Messages: []models.Message{{Role: "user", Content: "hi"}},
+	_, err := provider.Stream(context.Background(), &ai.Input{
+		Messages: []ai.Message{{Role: "user", Content: "hi"}},
 	})
 	if err == nil {
 		t.Fatal("Stream() expected status error, got nil")
@@ -123,8 +123,8 @@ func TestStream_cancelMidStream(t *testing.T) {
 	defer cancel()
 
 	provider := NewOpenAIProvider(srv.URL, "test-model")
-	stream, err := provider.Stream(ctx, &models.Input{
-		Messages: []models.Message{{Role: "user", Content: "hi"}},
+	stream, err := provider.Stream(ctx, &ai.Input{
+		Messages: []ai.Message{{Role: "user", Content: "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("Stream() error = %v", err)
@@ -156,8 +156,8 @@ func TestStream_timeout(t *testing.T) {
 
 	time.Sleep(1 * time.Millisecond)
 
-	_, err := provider.Stream(ctx, &models.Input{
-		Messages: []models.Message{
+	_, err := provider.Stream(ctx, &ai.Input{
+		Messages: []ai.Message{
 			{Role: "user", Content: "Write a very long essay about the history of computing."},
 		},
 	})
@@ -175,8 +175,8 @@ func TestStream_emitsDeltas(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	stream, err := provider.Stream(ctx, &models.Input{
-		Messages: []models.Message{
+	stream, err := provider.Stream(ctx, &ai.Input{
+		Messages: []ai.Message{
 			{Role: "user", Content: "Say hello in one short sentence."},
 		},
 	})
@@ -184,7 +184,7 @@ func TestStream_emitsDeltas(t *testing.T) {
 		t.Fatalf("Stream() error = %v", err)
 	}
 
-	out, err := models.Collect(stream)
+	out, err := ai.Collect(stream)
 	if err != nil {
 		t.Fatalf("Collect() error = %v", err)
 	}

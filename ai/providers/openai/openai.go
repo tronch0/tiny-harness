@@ -9,7 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"tiny-harness/models"
+	"tiny-harness/ai"
 )
 
 // OpenAIProvider is a struct that implements the Provider interface.
@@ -29,9 +29,9 @@ func NewOpenAIProvider(address, model string) *OpenAIProvider {
 }
 
 type chatRequest struct {
-	Model    string           `json:"model"`
-	Messages []models.Message `json:"messages"`
-	Stream   bool             `json:"stream,omitempty"`
+	Model    string       `json:"model"`
+	Messages []ai.Message `json:"messages"`
+	Stream   bool         `json:"stream,omitempty"`
 }
 
 type chatResponse struct {
@@ -53,10 +53,10 @@ type chatStreamChunk struct {
 }
 
 // Ensure OpenAIProvider implements Provider.
-var _ models.Provider = (*OpenAIProvider)(nil)
+var _ ai.Provider = (*OpenAIProvider)(nil)
 
 // Complete sends the request to the chat completions API and returns the assistant output.
-func (p *OpenAIProvider) Complete(ctx context.Context, in *models.Input) (*models.Output, error) {
+func (p *OpenAIProvider) Complete(ctx context.Context, in *ai.Input) (*ai.Output, error) {
 	res, err := p.doChatRequest(ctx, in, false)
 	if err != nil {
 		return nil, err
@@ -67,7 +67,7 @@ func (p *OpenAIProvider) Complete(ctx context.Context, in *models.Input) (*model
 }
 
 // Stream streams tokens from the chat completions API.
-func (p *OpenAIProvider) Stream(ctx context.Context, in *models.Input) (*models.Stream, error) {
+func (p *OpenAIProvider) Stream(ctx context.Context, in *ai.Input) (*ai.Stream, error) {
 	res, err := p.doChatRequest(ctx, in, true)
 	if err != nil {
 		return nil, err
@@ -77,7 +77,7 @@ func (p *OpenAIProvider) Stream(ctx context.Context, in *models.Input) (*models.
 		return nil, fmt.Errorf("unexpected status %d", res.StatusCode)
 	}
 
-	stream := models.NewStream()
+	stream := ai.NewStream()
 	go func() {
 		defer res.Body.Close()
 		stream.Finish(readSSE(ctx, res.Body, stream))
@@ -86,7 +86,7 @@ func (p *OpenAIProvider) Stream(ctx context.Context, in *models.Input) (*models.
 	return stream, nil
 }
 
-func (p *OpenAIProvider) doChatRequest(ctx context.Context, in *models.Input, stream bool) (*http.Response, error) {
+func (p *OpenAIProvider) doChatRequest(ctx context.Context, in *ai.Input, stream bool) (*http.Response, error) {
 	reqBody := chatRequest{
 		Model:    p.model,
 		Messages: in.Messages,
@@ -113,7 +113,7 @@ func (p *OpenAIProvider) doChatRequest(ctx context.Context, in *models.Input, st
 	return res, nil
 }
 
-func extractOutput(res *http.Response) (*models.Output, error) {
+func extractOutput(res *http.Response) (*ai.Output, error) {
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status %d", res.StatusCode)
 	}
@@ -126,13 +126,13 @@ func extractOutput(res *http.Response) (*models.Output, error) {
 		return nil, fmt.Errorf("no choices in response")
 	}
 
-	return &models.Output{
+	return &ai.Output{
 		Content:   parsed.Choices[0].Message.Content,
 		Reasoning: parsed.Choices[0].Message.ReasoningContent,
 	}, nil
 }
 
-func readSSE(ctx context.Context, body io.Reader, stream *models.Stream) error {
+func readSSE(ctx context.Context, body io.Reader, stream *ai.Stream) error {
 	scanner := bufio.NewScanner(body)
 	for scanner.Scan() {
 		if err := ctx.Err(); err != nil {
@@ -162,7 +162,7 @@ func readSSE(ctx context.Context, body io.Reader, stream *models.Stream) error {
 			continue
 		}
 
-		stream.Send(models.Delta{
+		stream.Send(ai.Delta{
 			ReasoningDelta: delta.ReasoningContent,
 			ContentDelta:   delta.Content,
 		})
