@@ -1,0 +1,32 @@
+# Built binaries (this module's default output name)
+/tiny-harness
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go test and coverage artifacts
+*.test
+*.out
+coverage.html
+*.coverprofile
+
+# Dependency copies (use modules, not vendor/)
+/vendor/
+
+# Secrets — never commit keys or local env
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor swap files; .vscode/ is committed on purpose
+*.swp
+*.swo
+*~
+
+# AGENTS.md is project guidance and should stay tracked
