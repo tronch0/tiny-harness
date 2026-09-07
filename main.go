@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -10,8 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"tiny-harness/ai"
+	"tiny-harness/agent"
 	"tiny-harness/ai/providers/openai"
+	"tiny-harness/tools"
 )
 
 func main() {
@@ -23,44 +25,50 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	stream, err := provider.Stream(ctx, &ai.Input{
-		Messages: []ai.Message{
-			// {Role: "user", Content: "Say hello in one short sentence."},
-			{Role: "user", Content: "can you recomened a 5 day trip to japan."},
+	tools := []tools.Tool{
+		tools.Tool{
+			Name:        "get_weather",
+			Description: "Get the weather for a given location",
+			Parameters: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"location": {
+						"type": "string",
+						"description": "The location to get the weather for"
+					}
+				}
+			}`),
+			Execute: func(ctx context.Context, input json.RawMessage) (string, error) {
+				fmt.Println("Executing get_weather tool...")
+				return "The weather in Tokyo is sunny.", nil
+			},
 		},
+	}
+
+	a := agent.New(provider, tools, agent.Config{
+		MaxTurns: 8,
+		Timeout:  30 * time.Second,
 	})
+	fmt.Println("Running agent...")
+	fmt.Println("--------------------------------")
+
+	userMsg := "can you recomened a 5 day trip to japan. based on the weather in tokyo."
+	out, err := a.Run(ctx, userMsg)
 	if err != nil {
 		fatalInferenceErr(err)
 		return
 	}
 
-	printedReasoning := false
-
-	for delta := range stream.Deltas() {
-		if delta.ReasoningDelta != "" {
-			if !printedReasoning {
-				fmt.Println("reasoning:")
-				printedReasoning = true
-			}
-			fmt.Print(delta.ReasoningDelta)
-		}
-		if delta.ContentDelta != "" {
-			if printedReasoning {
-				fmt.Println()
-				fmt.Println("content:")
-				printedReasoning = false
-			}
-			fmt.Print(delta.ContentDelta)
-		}
+	if out.Reasoning != "" {
+		fmt.Println("reasoning:")
+		fmt.Println(out.Reasoning)
 	}
-	fmt.Println()
+	fmt.Println("user message:")
+	fmt.Println(userMsg)
 
-	if err := stream.Err(); err != nil {
-		fatalInferenceErr(err)
-	}
+	fmt.Println("--------------------------------")
+	fmt.Println("assistant message:")
+	fmt.Println(out.Content)
 }
 
 func fatalInferenceErr(err error) {
@@ -70,6 +78,10 @@ func fatalInferenceErr(err error) {
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		fmt.Println("timed out")
+		return
+	}
+	if errors.Is(err, agent.ErrMaxTurns) {
+		fmt.Println("max turns exceeded")
 		return
 	}
 	log.Fatal(err)

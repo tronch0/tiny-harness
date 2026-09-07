@@ -8,8 +8,16 @@ Push features down only when a higher layer needs them. Do not put the agent loo
 
 - `Provider`: `Complete` and `Stream`
 - `Input` / `Output` / `Message` — not HTTP `Request` / `Response`
+- `Input.Tools` — schema-only `Tool` (name, description, parameters); no Execute
+- `Output.ToolCalls` — model-requested calls (`ID`, `Name`, `Arguments`)
+- `Message` may carry `ToolCalls` (assistant) or `ToolCallID` (role=`tool` result)
 - `Stream` + `Delta` (reasoning and content tokens); `Collect` drains a stream
+- Streaming does not assemble `ToolCalls` yet — use `Complete` for tool turns
 - `context.Context` is cancel/timeout only. Never put it on `Input`. Never name a type `Context`.
+
+Executable tools live in `tools` (`Tool` + `Execute`). Providers map schemas/calls only.
+
+`agent.Config` bounds a `Run`: `MaxTurns` (0 = unlimited), `Timeout` (0 = caller `ctx` only). `ErrMaxTurns` if the loop still has tool calls after the cap.
 
 Provider config (`address`, `model`, HTTP client) lives on the provider struct. 
 
