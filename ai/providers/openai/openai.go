@@ -1,14 +1,13 @@
 package openai
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
+
 	"tiny-harness/ai"
 )
 
@@ -26,30 +25,6 @@ func NewOpenAIProvider(address, model string) *OpenAIProvider {
 		model:   model,
 		client:  &http.Client{},
 	}
-}
-
-type chatRequest struct {
-	Model    string       `json:"model"`
-	Messages []ai.Message `json:"messages"`
-	Stream   bool         `json:"stream,omitempty"`
-}
-
-type chatResponse struct {
-	Choices []struct {
-		Message struct {
-			Content          string `json:"content"`
-			ReasoningContent string `json:"reasoning_content"`
-		} `json:"message"`
-	} `json:"choices"`
-}
-
-type chatStreamChunk struct {
-	Choices []struct {
-		Delta struct {
-			Content          string `json:"content"`
-			ReasoningContent string `json:"reasoning_content"`
-		} `json:"delta"`
-	} `json:"choices"`
 }
 
 // Ensure OpenAIProvider implements Provider.
@@ -89,7 +64,8 @@ func (p *OpenAIProvider) Stream(ctx context.Context, in *ai.Input) (*ai.Stream, 
 func (p *OpenAIProvider) doChatRequest(ctx context.Context, in *ai.Input, stream bool) (*http.Response, error) {
 	reqBody := chatRequest{
 		Model:    p.model,
-		Messages: in.Messages,
+		Messages: toWireMessages(in.Messages),
+		Tools:    toWireTools(in.Tools),
 		Stream:   stream,
 	}
 
@@ -126,49 +102,10 @@ func extractOutput(res *http.Response) (*ai.Output, error) {
 		return nil, fmt.Errorf("no choices in response")
 	}
 
+	msg := parsed.Choices[0].Message
 	return &ai.Output{
-		Content:   parsed.Choices[0].Message.Content,
-		Reasoning: parsed.Choices[0].Message.ReasoningContent,
+		Content:   msg.Content,
+		Reasoning: msg.ReasoningContent,
+		ToolCalls: fromWireToolCalls(msg.ToolCalls),
 	}, nil
-}
-
-func readSSE(ctx context.Context, body io.Reader, stream *ai.Stream) error {
-	scanner := bufio.NewScanner(body)
-	for scanner.Scan() {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-
-		line := strings.TrimSpace(scanner.Text())
-		if !strings.HasPrefix(line, "data:") {
-			continue
-		}
-
-		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if payload == "[DONE]" {
-			return nil
-		}
-
-		var chunk chatStreamChunk
-		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
-			return fmt.Errorf("decode stream chunk: %w", err)
-		}
-		if len(chunk.Choices) == 0 {
-			continue
-		}
-
-		delta := chunk.Choices[0].Delta
-		if delta.Content == "" && delta.ReasoningContent == "" {
-			continue
-		}
-
-		stream.Send(ai.Delta{
-			ReasoningDelta: delta.ReasoningContent,
-			ContentDelta:   delta.Content,
-		})
-	}
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("read stream: %w", err)
-	}
-	return nil
 }
