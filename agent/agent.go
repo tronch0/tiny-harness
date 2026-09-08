@@ -20,6 +20,9 @@ type Config struct {
 	MaxTurns int
 	// Timeout, if > 0, is applied to the whole Run together with ctx.
 	Timeout time.Duration
+	// SystemPrompt, if set, is prepended as a system message on each model call.
+	// It is not stored in conversation history.
+	SystemPrompt string
 }
 
 // Agent runs turns against a Provider and keeps the conversation.
@@ -28,6 +31,8 @@ type Agent struct {
 	messages []ai.Message
 	tools    []tools.Tool
 	cfg      Config
+	OnDelta  func(ai.Delta)
+	OnTurn   func(*ai.Output)
 }
 
 // New creates an Agent that calls provider.
@@ -60,10 +65,7 @@ func (a *Agent) Run(ctx context.Context, userMsg string) (*ai.Output, error) {
 		}
 		turns++
 
-		out, err = a.provider.Complete(ctx, &ai.Input{
-			Messages: slices.Clone(a.messages),
-			Tools:    toolsToAiTools(a.tools),
-		})
+		out, err = a.turn(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -88,6 +90,26 @@ func (a *Agent) Run(ctx context.Context, userMsg string) (*ai.Output, error) {
 	}
 
 	return out, nil
+}
+
+func (a *Agent) turn(ctx context.Context) (*ai.Output, error) {
+	stream, err := a.provider.Stream(ctx, &ai.Input{
+		Messages: a.modelMessages(),
+		Tools:    toolsToAiTools(a.tools),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ai.CollectFunc(stream, a.OnDelta)
+}
+
+func (a *Agent) modelMessages() []ai.Message {
+	if a.cfg.SystemPrompt == "" {
+		return slices.Clone(a.messages)
+	}
+	out := make([]ai.Message, 0, 1+len(a.messages))
+	out = append(out, ai.Message{Role: "system", Content: a.cfg.SystemPrompt})
+	return append(out, a.messages...)
 }
 
 func (a *Agent) runTool(ctx context.Context, call ai.ToolCall) string {

@@ -39,8 +39,24 @@ func (f *fakeProvider) Complete(ctx context.Context, in *ai.Input) (*ai.Output, 
 	return out, nil
 }
 
-func (f *fakeProvider) Stream(context.Context, *ai.Input) (*ai.Stream, error) {
-	panic("Stream is not used in this iteration")
+func (f *fakeProvider) Stream(ctx context.Context, in *ai.Input) (*ai.Stream, error) {
+	out, err := f.Complete(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	stream := ai.NewStream()
+	go func() {
+		if out.Reasoning != "" {
+			stream.Send(ai.Delta{ReasoningDelta: out.Reasoning})
+		}
+		if out.Content != "" {
+			stream.Send(ai.Delta{ContentDelta: out.Content})
+		}
+		stream.SetToolCalls(out.ToolCalls)
+		stream.SetUsage(out.Usage)
+		stream.Finish(nil)
+	}()
+	return stream, nil
 }
 
 func TestRun_appendsTurn(t *testing.T) {
@@ -88,6 +104,54 @@ func TestRun_sendsHistory(t *testing.T) {
 	}
 	if !messagesEqual(got, want) {
 		t.Fatalf("provider messages = %#v, want %#v", got, want)
+	}
+}
+
+func TestRun_prependsSystemPrompt(t *testing.T) {
+	p := &fakeProvider{outs: []*ai.Output{{Content: "hi"}}}
+	a := New(p, nil, Config{SystemPrompt: "be brief"})
+
+	if _, err := a.Run(context.Background(), "hello"); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	got := p.inputs[0].Messages
+	want := []ai.Message{
+		{Role: "system", Content: "be brief"},
+		{Role: "user", Content: "hello"},
+	}
+	if !messagesEqual(got, want) {
+		t.Fatalf("provider messages = %#v, want %#v", got, want)
+	}
+	hist := a.Messages()
+	if len(hist) != 2 || hist[0].Role != "user" {
+		t.Fatalf("Messages() = %#v, want conversation without system", hist)
+	}
+}
+
+func TestRun_systemPromptOnEveryComplete(t *testing.T) {
+	call := ai.ToolCall{ID: "call_1", Name: "echo"}
+	p := &fakeProvider{outs: []*ai.Output{
+		{ToolCalls: []ai.ToolCall{call}},
+		{Content: "done"},
+	}}
+	a := New(p, []tools.Tool{{
+		Name: "echo",
+		Execute: func(context.Context, json.RawMessage) (string, error) {
+			return "ok", nil
+		},
+	}}, Config{SystemPrompt: "use tools"})
+
+	if _, err := a.Run(context.Background(), "hello"); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if len(p.inputs) != 2 {
+		t.Fatalf("Complete calls = %d, want 2", len(p.inputs))
+	}
+	for i, in := range p.inputs {
+		if len(in.Messages) == 0 || in.Messages[0].Role != "system" || in.Messages[0].Content != "use tools" {
+			t.Fatalf("Complete %d messages = %#v, want system first", i, in.Messages)
+		}
 	}
 }
 
