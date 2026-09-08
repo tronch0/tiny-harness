@@ -294,6 +294,35 @@ func TestRun_toolErrorAppendsErrorResult(t *testing.T) {
 	}
 }
 
+func TestRun_onTurn(t *testing.T) {
+	call := ai.ToolCall{ID: "call_1", Name: "echo"}
+	p := &fakeProvider{outs: []*ai.Output{
+		{Content: "one", ToolCalls: []ai.ToolCall{call}, Usage: ai.Usage{PromptTokens: 10, CompletionTokens: 2}},
+		{Content: "two", Usage: ai.Usage{PromptTokens: 20, CompletionTokens: 3}},
+	}}
+	a := New(p, []tools.Tool{{
+		Name: "echo",
+		Execute: func(context.Context, json.RawMessage) (string, error) {
+			return "ok", nil
+		},
+	}}, Config{})
+
+	var turns []ai.Usage
+	a.OnTurn = func(out *ai.Output) {
+		turns = append(turns, out.Usage)
+	}
+
+	if _, err := a.Run(context.Background(), "hello"); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if len(turns) != 2 {
+		t.Fatalf("OnTurn calls = %d, want 2", len(turns))
+	}
+	if turns[0].PromptTokens != 10 || turns[1].PromptTokens != 20 {
+		t.Fatalf("OnTurn usage = %#v", turns)
+	}
+}
+
 func TestRun_maxTurns(t *testing.T) {
 	call := ai.ToolCall{ID: "call_1", Name: "echo"}
 	p := &fakeProvider{outs: []*ai.Output{

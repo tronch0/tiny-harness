@@ -51,16 +51,16 @@ func main() {
 
 		printer := newDeltaPrinter()
 		a.OnDelta = printer.print
+		a.OnTurn = printer.printUsage
 
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-		out, err := a.Run(ctx, userMsg)
+		_, err := a.Run(ctx, userMsg)
 		stop()
+		printer.finish()
 		if err != nil {
 			printRunErr(err)
 			continue
 		}
-		printer.finish()
-		printUsage(out.Usage)
 	}
 	if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
 		log.Fatal(err)
@@ -143,19 +143,10 @@ func demoTools() []tools.Tool {
 			}
 		}`),
 		Execute: func(ctx context.Context, input json.RawMessage) (string, error) {
-			fmt.Println("Executing get_weather tool...")
+			fmt.Println("tool: get_weather")
 			return "The weather in Tokyo is sunny.", nil
 		},
 	}}
-}
-
-func printUsage(u ai.Usage) {
-	fmt.Println("--------------------------------")
-	fmt.Println("Usage Tokens")
-	fmt.Println("PromptTokens", u.PromptTokens)
-	fmt.Println("CompletionTokens", u.CompletionTokens)
-	fmt.Println("TotalTokens", u.PromptTokens+u.CompletionTokens)
-	fmt.Println("--------------------------------")
 }
 
 func printRunErr(err error) {

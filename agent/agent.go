@@ -69,6 +69,9 @@ func (a *Agent) Run(ctx context.Context, userMsg string) (*ai.Output, error) {
 		if err != nil {
 			return nil, err
 		}
+		if a.OnTurn != nil {
+			a.OnTurn(out)
+		}
 
 		a.messages = append(a.messages, ai.Message{
 			Role:      "assistant",
