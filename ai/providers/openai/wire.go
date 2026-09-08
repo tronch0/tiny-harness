@@ -5,10 +5,20 @@ import "encoding/json"
 // JSON shapes for the OpenAI-compatible /v1/chat/completions API.
 
 type chatRequest struct {
-	Model    string        `json:"model"`
-	Messages []wireMessage `json:"messages"`
-	Tools    []wireTool    `json:"tools,omitempty"`
-	Stream   bool          `json:"stream,omitempty"`
+	Model         string         `json:"model"`
+	Messages      []wireMessage  `json:"messages"`
+	Tools         []wireTool     `json:"tools,omitempty"`
+	Stream        bool           `json:"stream,omitempty"`
+	StreamOptions *streamOptions `json:"stream_options,omitempty"`
+}
+
+type streamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
+}
+
+type wireUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
 }
 
 type wireMessage struct {
@@ -44,13 +54,26 @@ type chatResponse struct {
 			ToolCalls        []wireToolCall `json:"tool_calls"`
 		} `json:"message"`
 	} `json:"choices"`
+	Usage wireUsage `json:"usage"`
 }
 
 type chatStreamChunk struct {
 	Choices []struct {
 		Delta struct {
-			Content          string `json:"content"`
-			ReasoningContent string `json:"reasoning_content"`
+			Content          string               `json:"content"`
+			ReasoningContent string               `json:"reasoning_content"`
+			ToolCalls        []wireStreamToolCall `json:"tool_calls"`
 		} `json:"delta"`
 	} `json:"choices"`
+	Usage *wireUsage `json:"usage"`
+}
+
+type wireStreamToolCall struct {
+	Index    int    `json:"index"`
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
 }

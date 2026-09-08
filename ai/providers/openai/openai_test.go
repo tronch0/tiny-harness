@@ -111,6 +111,40 @@ func TestComplete_sendsToolsAndParsesToolCalls(t *testing.T) {
 	}
 }
 
+func TestComplete_parsesUsage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		var req chatRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if req.Stream || req.StreamOptions != nil {
+			t.Fatalf("Complete must not set stream options: %+v", req)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"choices":[{"message":{"content":"hi"}}],"usage":{"prompt_tokens":11,"completion_tokens":2,"total_tokens":13}}`)
+	}))
+	defer srv.Close()
+
+	provider := NewOpenAIProvider(srv.URL, "test-model")
+	out, err := provider.Complete(context.Background(), &ai.Input{
+		Messages: []ai.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Complete() error = %v", err)
+	}
+	if out.Content != "hi" {
+		t.Fatalf("Content = %q, want hi", out.Content)
+	}
+	if out.Usage.PromptTokens != 11 || out.Usage.CompletionTokens != 2 {
+		t.Fatalf("Usage = %+v", out.Usage)
+	}
+}
+
 func TestComplete_roundTripsToolMessages(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -189,6 +223,108 @@ func TestStream_parsesSSE(t *testing.T) {
 	}
 	if out.Content != "Hello!" {
 		t.Fatalf("Content = %q, want %q", out.Content, "Hello!")
+	}
+}
+
+func TestStream_parsesUsage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		var req chatRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if !req.Stream {
+			t.Fatal("Stream request missing stream=true")
+		}
+		if req.StreamOptions == nil || !req.StreamOptions.IncludeUsage {
+			t.Fatalf("stream_options = %+v, want include_usage", req.StreamOptions)
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n")
+		fmt.Fprint(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":1,\"total_tokens\":10}}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	provider := NewOpenAIProvider(srv.URL, "test-model")
+	stream, err := provider.Stream(context.Background(), &ai.Input{
+		Messages: []ai.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+
+	out, err := ai.Collect(stream)
+	if err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+	if out.Content != "Hello" {
+		t.Fatalf("Content = %q, want Hello", out.Content)
+	}
+	if out.Usage.PromptTokens != 9 || out.Usage.CompletionTokens != 1 {
+		t.Fatalf("Usage = %+v", out.Usage)
+	}
+}
+
+func TestStream_parsesUsageOnContentChunk(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":1}}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	provider := NewOpenAIProvider(srv.URL, "test-model")
+	stream, err := provider.Stream(context.Background(), &ai.Input{
+		Messages: []ai.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+
+	out, err := ai.Collect(stream)
+	if err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+	if out.Content != "Hi" {
+		t.Fatalf("Content = %q, want Hi", out.Content)
+	}
+	if out.Usage.PromptTokens != 4 || out.Usage.CompletionTokens != 1 {
+		t.Fatalf("Usage = %+v", out.Usage)
+	}
+}
+
+func TestStream_assemblesToolCalls(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"echo\",\"arguments\":\"\"}}]}}]}\n\n")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"m\\\":\\\"hi\\\"}\"}}]}}]}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	provider := NewOpenAIProvider(srv.URL, "test-model")
+	stream, err := provider.Stream(context.Background(), &ai.Input{
+		Messages: []ai.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+
+	out, err := ai.Collect(stream)
+	if err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+	if len(out.ToolCalls) != 1 {
+		t.Fatalf("ToolCalls len = %d, want 1", len(out.ToolCalls))
+	}
+	tc := out.ToolCalls[0]
+	if tc.ID != "call_1" || tc.Name != "echo" || string(tc.Arguments) != `{"m":"hi"}` {
+		t.Fatalf("ToolCall = %+v", tc)
 	}
 }
 

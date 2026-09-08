@@ -54,6 +54,13 @@ func toWireToolCalls(calls []ai.ToolCall) []wireToolCall {
 	return out
 }
 
+func fromWireUsage(u wireUsage) ai.Usage {
+	return ai.Usage{
+		PromptTokens:     u.PromptTokens,
+		CompletionTokens: u.CompletionTokens,
+	}
+}
+
 func fromWireToolCalls(calls []wireToolCall) []ai.ToolCall {
 	if len(calls) == 0 {
 		return nil

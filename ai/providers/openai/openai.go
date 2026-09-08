@@ -68,6 +68,9 @@ func (p *OpenAIProvider) doChatRequest(ctx context.Context, in *ai.Input, stream
 		Tools:    toWireTools(in.Tools),
 		Stream:   stream,
 	}
+	if stream {
+		reqBody.StreamOptions = &streamOptions{IncludeUsage: true}
+	}
 
 	data, err := json.Marshal(reqBody)
 	if err != nil {
@@ -107,5 +110,6 @@ func extractOutput(res *http.Response) (*ai.Output, error) {
 		Content:   msg.Content,
 		Reasoning: msg.ReasoningContent,
 		ToolCalls: fromWireToolCalls(msg.ToolCalls),
+		Usage:     fromWireUsage(parsed.Usage),
 	}, nil
 }
