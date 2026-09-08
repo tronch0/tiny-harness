@@ -42,4 +42,12 @@ type Output struct {
 	Content   string
 	Reasoning string
 	ToolCalls []ToolCall
+	Usage     Usage
+}
+
+// Usage is provider-reported token counts for one Complete/Stream call.
+// Zero means the provider did not report usage.
+type Usage struct {
+	PromptTokens     int // input: system, history, tool schemas
+	CompletionTokens int // generation: content, reasoning, tool_calls
 }

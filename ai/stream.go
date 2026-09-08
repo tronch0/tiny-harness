@@ -12,8 +12,10 @@ type Delta struct {
 // The provider sends deltas via Send and must call Finish when done.
 // Callers read deltas from Deltas and check Err after the channel closes.
 type Stream struct {
-	deltas chan Delta
-	err    error
+	deltas    chan Delta
+	err       error
+	toolCalls []ToolCall
+	usage     Usage
 }
 
 // NewStream creates a stream handle for a provider to populate.
@@ -31,6 +33,16 @@ func (s *Stream) Err() error {
 	return s.err
 }
 
+// SetToolCalls records assembled tool calls. For use by providers only, before Finish.
+func (s *Stream) SetToolCalls(calls []ToolCall) {
+	s.toolCalls = calls
+}
+
+// SetUsage records provider-reported token counts. For use by providers only, before Finish.
+func (s *Stream) SetUsage(u Usage) {
+	s.usage = u
+}
+
 // Send emits one delta. For use by providers only.
 func (s *Stream) Send(delta Delta) {
 	s.deltas <- delta
@@ -44,9 +56,17 @@ func (s *Stream) Finish(err error) {
 
 // Collect reads all deltas and returns the assembled output.
 func Collect(stream *Stream) (*Output, error) {
+	return CollectFunc(stream, nil)
+}
+
+// CollectFunc is Collect plus a callback for each delta (live tokens).
+func CollectFunc(stream *Stream, onDelta func(Delta)) (*Output, error) {
 	var reasoning, content strings.Builder
 
 	for delta := range stream.Deltas() {
+		if onDelta != nil {
+			onDelta(delta)
+		}
 		reasoning.WriteString(delta.ReasoningDelta)
 		content.WriteString(delta.ContentDelta)
 	}
@@ -58,5 +78,7 @@ func Collect(stream *Stream) (*Output, error) {
 	return &Output{
 		Content:   content.String(),
 		Reasoning: reasoning.String(),
+		ToolCalls: stream.toolCalls,
+		Usage:     stream.usage,
 	}, nil
 }
